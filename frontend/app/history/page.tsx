@@ -291,7 +291,7 @@ export default function HistoryPage() {
                       </div>
                       <div className="flex flex-wrap gap-2 text-sm text-gray-600">
                         <span>
-                          📅 {new Date(submission.submittedAt).toLocaleString('zh-CN')}
+                          📅 {new Date(submission.submittedAt).toLocaleString('en-US')}
                         </span>
                         <span>•</span>
                         <span>⏱️ {submission.executionTime}ms</span>

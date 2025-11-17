@@ -1,16 +1,16 @@
 import { prisma } from '../lib/prisma';
 
 /**
- * 用户能力画像更新服务
- * 根据做题表现动态调整算法熟练度
+ * User proficiency profile update service
+ * Dynamically adjust algorithm proficiency based on problem performance
  */
 
 /**
- * 更新用户的算法熟练度
- * 
- * @param userId 用户ID
- * @param problemAlgorithmTypes 题目的算法类型
- * @param score 本次得分
+ * Update user's algorithm proficiency
+ *
+ * @param userId User ID
+ * @param problemAlgorithmTypes Algorithm types of the problem
+ * @param score Score for this attempt
  */
 export async function updateAlgorithmProficiency(
   userId: string,
@@ -18,7 +18,7 @@ export async function updateAlgorithmProficiency(
   score: number
 ): Promise<void> {
   try {
-    // 获取用户当前熟练度
+    // Get user's current proficiency
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { algorithmProficiency: true },
@@ -33,32 +33,32 @@ export async function updateAlgorithmProficiency(
 
     // 根据得分调整熟练度
     problemAlgorithmTypes.forEach((type) => {
-      const current = updatedProficiency[type] || 5; // 默认5级
+      const current = updatedProficiency[type] || 5; // default level 5
       let adjustment = 0;
 
-      // 调整规则
+      // Adjustment rules
       if (score >= 90) {
-        adjustment = 0.3; // 高分提升较多
+        adjustment = 0.3; // higher scores increase more
       } else if (score >= 80) {
         adjustment = 0.2;
       } else if (score >= 70) {
         adjustment = 0.1;
       } else if (score >= 60) {
-        adjustment = 0; // 及格不变
+        adjustment = 0; // passing score: no change
       } else if (score >= 50) {
-        adjustment = -0.1; // 不及格降低
+        adjustment = -0.1; // decrease for failing score
       } else {
-        adjustment = -0.2; // 低分降低较多
+        adjustment = -0.2; // lower scores decrease more
       }
 
-      // 更新熟练度(限制在1-10之间)
+      // Update proficiency (clamped between 1-10)
       updatedProficiency[type] = Math.max(1, Math.min(10, current + adjustment));
       
-      // 四舍五入到1位小数
+      // Round to 1 decimal place
       updatedProficiency[type] = Math.round(updatedProficiency[type] * 10) / 10;
     });
 
-    // 保存更新
+    // Save update
     await prisma.user.update({
       where: { id: userId },
       data: { algorithmProficiency: updatedProficiency },
@@ -71,17 +71,17 @@ export async function updateAlgorithmProficiency(
 }
 
 /**
- * 更新用户的近期表现记录
- * 
- * @param userId 用户ID
- * @param score 本次得分
+ * Update user's recent performance records
+ *
+ * @param userId User ID
+ * @param score Score for this attempt
  */
 export async function updateRecentPerformance(
   userId: string,
   score: number
 ): Promise<void> {
   try {
-    // 获取用户当前的 recentScores
+    // Get user's current recentScores
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { recentScores: true },
@@ -91,7 +91,7 @@ export async function updateRecentPerformance(
       return;
     }
 
-    // 保留最近10次分数
+    // Keep the latest 10 scores
     const updatedScores = [...user.recentScores.slice(-9), score];
 
     await prisma.user.update({

@@ -3,13 +3,13 @@ import { prisma } from '../lib/prisma';
 import { decrypt } from '../utils/crypto';
 
 /**
- * 从 LLM 响应中提取 JSON
- * 处理 Markdown 代码块格式 (```json ... ```)
+ * Extract JSON from LLM response
+ * Handle Markdown code block format (```json ... ```)
  */
 export function extractJSON(text: string): string {
   const trimmed = text.trim();
   
-  // 尝试匹配 Markdown 代码块
+  // Try to match Markdown code block
   const jsonMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (jsonMatch) {
     return jsonMatch[1].trim();
@@ -34,11 +34,11 @@ export interface LLMConfig {
   baseURL: string;
   model: string;
   isUserConfig: boolean;
-  userId?: string; // 用于统计
+  userId?: string; // used for analytics
 }
 
 /**
- * 检查用户LLM配额是否超限
+ * Check if user LLM quota is exceeded
  */
 async function checkQuota(userId: string): Promise<{ allowed: boolean; reason?: string }> {
   const config = await prisma.lLMConfig.findUnique({
@@ -46,15 +46,15 @@ async function checkQuota(userId: string): Promise<{ allowed: boolean; reason?: 
   });
 
   if (!config) {
-    return { allowed: true }; // 没有配置,使用系统默认
+    return { allowed: true }; // No config, use system default
   }
 
-  // 检查是否需要重置月度统计
+  // Check whether monthly stats need to be reset
   const now = new Date();
   const lastReset = config.lastResetDate;
   
   if (!lastReset || lastReset.getMonth() !== now.getMonth() || lastReset.getFullYear() !== now.getFullYear()) {
-    // 重置月度统计
+    // Reset monthly stats
     await prisma.lLMConfig.update({
       where: { userId },
       data: {
@@ -67,7 +67,7 @@ async function checkQuota(userId: string): Promise<{ allowed: boolean; reason?: 
     return { allowed: true };
   }
 
-  // 检查配额
+  // Check quota
   if (config.monthlyTokenQuota && config.monthlyTokens >= config.monthlyTokenQuota) {
     await prisma.lLMConfig.update({
       where: { userId },
@@ -75,7 +75,7 @@ async function checkQuota(userId: string): Promise<{ allowed: boolean; reason?: 
     });
     return {
       allowed: false,
-      reason: `月度配额已用尽 (${config.monthlyTokens}/${config.monthlyTokenQuota} tokens)`,
+      reason: `Monthly quota exhausted (${config.monthlyTokens}/${config.monthlyTokenQuota} tokens)`,
     };
   }
 
@@ -83,10 +83,10 @@ async function checkQuota(userId: string): Promise<{ allowed: boolean; reason?: 
 }
 
 /**
- * 记录LLM使用统计
+ * Record LLM usage statistics
  */
 async function recordUsage(userId: string | undefined, tokens: number) {
-  if (!userId) return; // 系统默认配置不记录
+  if (!userId) return; // Do not record for system default config
 
   try {
     const config = await prisma.lLMConfig.findUnique({
@@ -110,10 +110,10 @@ async function recordUsage(userId: string | undefined, tokens: number) {
 }
 
 /**
- * 获取用户的LLM配置(如果有),否则返回系统默认配置
+ * Get user's LLM config (if any), otherwise return system default config
  */
 export async function getUserLLMConfig(userId?: string): Promise<LLMConfig> {
-  // 系统默认配置
+  // Default system configuration
   const defaultConfig: LLMConfig = {
     provider: 'deepseek',
     apiKey: process.env.OPENAI_API_KEY || '',
@@ -122,13 +122,13 @@ export async function getUserLLMConfig(userId?: string): Promise<LLMConfig> {
     isUserConfig: false,
   };
 
-  // 如果没有提供userId,返回默认配置
+  // If no userId is provided, return default config
   if (!userId) {
     return defaultConfig;
   }
 
   try {
-    // 查询用户配置
+    // Query user config
     const userConfig = await prisma.lLMConfig.findUnique({
       where: { userId },
     });
@@ -137,7 +137,7 @@ export async function getUserLLMConfig(userId?: string): Promise<LLMConfig> {
       return defaultConfig;
     }
 
-    // 检查月度重置
+    // Check monthly reset
     const currentMonth = new Date().toISOString().substring(0, 7); // "2025-11"
     const lastResetMonth = userConfig.lastResetDate?.toISOString().substring(0, 7);
     
@@ -152,18 +152,18 @@ export async function getUserLLMConfig(userId?: string): Promise<LLMConfig> {
           quotaExceeded: false,
         },
       });
-      // 更新内存中的值
+      // Update values in memory
       userConfig.monthlyTokens = 0;
       userConfig.monthlyRequests = 0;
       userConfig.quotaExceeded = false;
     }
 
-    // 检查配额是否超限 (使用正确的字段名)
+    // Check if quota exceeded (use the correct field names)
     if (userConfig.monthlyTokenQuota && userConfig.monthlyTokenQuota > 0) {
       if (userConfig.monthlyTokens >= userConfig.monthlyTokenQuota) {
         console.warn(`User ${userId} exceeded monthly quota (${userConfig.monthlyTokens}/${userConfig.monthlyTokenQuota}), using default config`);
         
-        // 标记配额超限
+        // Mark quota as exceeded
         if (!userConfig.quotaExceeded) {
           await prisma.lLMConfig.update({
             where: { userId },
@@ -175,10 +175,10 @@ export async function getUserLLMConfig(userId?: string): Promise<LLMConfig> {
       }
     }
 
-    // 解密API Key
+    // Decrypt API key
     const apiKey = decrypt(userConfig.apiKeyEncrypted);
     
-    // 根据provider确定baseURL和model
+    // Determine baseURL and model based on provider
     let baseURL = userConfig.baseUrl || '';
     let model = userConfig.model || '';
     
@@ -189,7 +189,7 @@ export async function getUserLLMConfig(userId?: string): Promise<LLMConfig> {
       baseURL = baseURL || 'https://api.anthropic.com';
       model = model || 'claude-3-haiku-20240307';
     } else if (userConfig.provider === 'custom') {
-      // 自定义provider必须提供baseURL和model
+      // Custom provider must provide baseURL and model
       if (!baseURL || !model) {
         console.warn(`User ${userId} custom LLM config incomplete, using default`);
         return defaultConfig;
@@ -210,7 +210,7 @@ export async function getUserLLMConfig(userId?: string): Promise<LLMConfig> {
 }
 
 /**
- * LLM Service - 支持用户级配置
+ * LLM Service - supports user-level configuration
  */
 class LLMService {
   private config: LLMConfig;
@@ -222,7 +222,7 @@ class LLMService {
   }
 
   /**
-   * 获取当前使用的配置信息
+   * Get current configuration info
    */
   getConfigInfo() {
     return {
@@ -234,7 +234,7 @@ class LLMService {
   }
 
   /**
-   * 调用 LLM 生成回复
+   * Call LLM to generate a response
    */
   async chat(messages: LLMMessage[], temperature = 0.7, maxTokens = 2000): Promise<LLMResponse> {
     try {
@@ -260,7 +260,7 @@ class LLMService {
         tokens: response.data.usage?.total_tokens || 0,
       };
 
-      // 更新用户LLM使用统计(如果是用户配置)
+      // Update user LLM usage stats (if using user-level config)
       if (this.config.isUserConfig && this.userId && result.tokens > 0) {
         try {
           await prisma.lLMConfig.update({
@@ -274,19 +274,19 @@ class LLMService {
           });
         } catch (error) {
           console.error('Failed to update LLM usage stats:', error);
-          // 统计更新失败不影响主流程
+          // Stats update failure does not impact the main flow
         }
       }
 
       return result;
     } catch (error: any) {
       console.error('LLM API Error:', error.response?.data || error.message);
-      throw new Error('LLM API 调用失败');
+      throw new Error('LLM API call failed');
     }
   }
 
   /**
-   * 生成题目
+   * Generate problem
    */
   async generateProblem(
     difficulty: number, 
@@ -295,119 +295,119 @@ class LLMService {
     proficiency?: Record<string, number>
   ): Promise<string> {
     const proficiencyInfo = proficiency && Object.keys(proficiency).length > 0
-      ? `\n3. 用户算法熟练度: ${JSON.stringify(proficiency)} (请针对薄弱项设计题目)`
+      ? `\nProficiency info: ${JSON.stringify(proficiency)} (please design the problem to target weaknesses)`
       : '';
 
-    // 添加时间戳和随机数确保每次生成不同的题目
+    // Add timestamp and random seed to ensure a unique problem each time
     const timestamp = Date.now();
     const randomSeed = Math.floor(Math.random() * 1000000);
     
-    // 随机选择题目场景主题（确保多样性）
+    // Randomly select a theme to ensure diversity
     const themes = [
-      '股票交易', '矩阵路径', '字符串处理', '树形结构', '链表操作',
-      '数组操作', '哈希表应用', '栈和队列', '二分查找', '排序算法',
-      '区间问题', '位运算', '数学问题', '几何问题', '博弈论',
-      '背包问题', '字符串匹配', '图的遍历', '最短路径', '拓扑排序',
-      '并查集', '线段树', '前缀和', '滑动窗口', '双指针',
-      '回溯算法', '分治算法', '贪心算法', '动态规划', '状态压缩'
+      'stock trading', 'matrix path', 'string processing', 'tree structures', 'linked list operations',
+      'array operations', 'hash table applications', 'stack and queue', 'binary search', 'sorting algorithms',
+      'range problems', 'bitwise operations', 'math problems', 'geometry problems', 'game theory',
+      'knapsack problems', 'string matching', 'graph traversal', 'shortest path', 'topological sort',
+      'union-find', 'segment tree', 'prefix sum', 'sliding window', 'two pointers',
+      'backtracking', 'divide and conquer', 'greedy algorithms', 'dynamic programming', 'bitmask DP'
     ];
     const randomTheme = themes[Math.floor(Math.random() * themes.length)];
     
-    const prompt = `你是一个算法题目生成专家。请生成一道**全新的、独特的**难度为 ${difficulty}/10 的算法题目。
+    const prompt = `You are an expert algorithm problem generator. Generate an entirely new, unique algorithm problem with difficulty ${difficulty}/10.
 
-【关键要求 - 必须严格遵守】
-1. 生成ID: ${timestamp}-${randomSeed}
-2. **题目主题必须围绕: ${randomTheme}**
-3. 算法类型: ${algorithmTypes.join('、')}
-4. 适合水平: ${userLevel}/10 的学习者${proficiencyInfo}
+Key requirements (must strictly follow):
+1. Generated ID: ${timestamp}-${randomSeed}
+2. **Problem theme must be centered around: ${randomTheme}**
+3. Algorithm types: ${algorithmTypes.join(', ')}
+4. Target level: ${userLevel}/10 learner${proficiencyInfo}
 
-【创意要求】
-- 题目标题必须与"${randomTheme}"相关，不要使用糖果、游戏等老套场景
-- 题目背景要创新，避免使用城市、收集、街道等常见词汇
-- 数据结构和解题思路要有新意
-- 题目必须实际可解，测试用例要准确
+Creative requirements:
+- The problem title must be related to "${randomTheme}", avoid clichéd themes such as candy, games, etc.
+- The problem background should be innovative; avoid common motifs like city, collection, street, etc.
+- Data structures and solution approach should be novel.
+- Problem must be solvable; test cases must be accurate.
 
-【格式要求】
-请以 JSON 格式返回,包含以下字段:
+Format requirements:
+Return as JSON with the following fields:
 {
-  "title": "题目标题(必须包含主题关键词)",
-  "description": "题目描述(详细且创新)",
-  "inputFormat": "输入格式说明",
-  "outputFormat": "输出格式说明",
-  "examples": [{"input": "示例输入", "output": "示例输出", "explanation": "解释"}],
-  "testCases": [{"input": "测试输入", "output": "期望输出"}],
-  "hints": ["提示1", "提示2", "提示3"],
-  "timeComplexity": "期望时间复杂度",
-  "spaceComplexity": "期望空间复杂度"
+  "title": "Problem title (must include theme keywords)",
+  "description": "Problem description (detailed and creative)",
+  "inputFormat": "Input format description",
+  "outputFormat": "Output format description",
+  "examples": [{"input": "example input", "output": "example output", "explanation": "explanation"}],
+  "testCases": [{"input": "test input", "output": "expected output"}],
+  "hints": ["hint1", "hint2", "hint3"],
+  "timeComplexity": "expected time complexity",
+  "spaceComplexity": "expected space complexity"
 }`;
 
     const response = await this.chat([
-      { role: 'system', content: `你是一个专业的算法题目生成助手。你必须只返回有效的 JSON 格式,不要使用 Markdown 代码块包裹,不要添加任何解释文字。
+      { role: 'system', content: `You are a professional algorithm problem generator assistant. You must only return valid JSON, do not wrap content in Markdown code blocks, and do not add any extra explanatory text.
 
-【核心原则】
-1. 每次调用必须生成完全不同的题目
-2. 严格按照用户指定的主题生成题目
-3. 避免重复使用相似的场景、词汇、结构
-4. 题目必须有实际意义和可解性` },
+    Core principles:
+    1. Each call must generate a completely different problem.
+    2. Strictly follow the user-specified theme.
+    3. Avoid reusing similar scenes, vocabulary, and structures.
+    4. The problem must make sense and be solvable.` },
       { role: 'user', content: prompt }
-    ], 1.0, 3000); // temperature设为1.0最大化随机性
+    ], 1.0, 3000); // temperature set to 1.0 to maximize randomness
 
     return response.content;
   }
 
   /**
-   * Warm-up 对话评估
+   * Warm-up conversation assessment
    */
   async warmupChat(conversationHistory: LLMMessage[], userMessage: string): Promise<LLMResponse> {
-    const systemPrompt = `你是一个友好但高效的算法学习助手,正在与用户进行 warm-up 对话,评估他们的算法能力水平。
+    const systemPrompt = `You are a friendly yet efficient algorithm learning assistant. You are conducting a warm-up conversation with the user to assess their algorithmic skill level.
 
-对话目标:
-1. 了解用户的学习目标 (面试准备/兴趣学习/竞赛)
-2. 评估用户的当前水平 (1-10)
-3. 了解用户熟悉的算法类型
-4. 了解用户的编程语言偏好 (Python/JavaScript/Go/Java/C++/Rust 等)
-5. 了解用户在哪些算法类型上需要重点练习
+Conversation goals:
+1. Understand the user's learning goals (interview preparation / learning for interest / contest)
+2. Assess the user's current level (1-10)
+3. Understand the algorithm types the user is familiar with
+4. Understand the user's preferred programming languages (Python/JavaScript/Go/Java/C++/Rust, etc.)
+5. Determine which algorithm categories the user needs to focus on
 
-**重要规则**:
-- 请自然地提问,不要一次问太多问题
-- 根据用户的回答逐步深入
-- **通常 3-5 轮对话即可收集足够信息**
-- 当你已经了解了用户的学习目标、技术背景、算法基础后,**立即主动结束对话**
-- 用户说"可以"、"行"、"好的"、"开始吧"、"评估吧"等表示同意时,**必须立即输出评估结果**
-- 不要在评估后继续询问用户是否需要练习,评估即代表 warmup 结束
+Important rules:
+- Ask questions naturally, avoid asking too many at once
+- Deepen follow-up questions based on user's responses
+- Typically, 3-5 dialogue turns are sufficient to collect enough information
+- When you have understood the user's learning goals, background and algorithm foundation, immediately end the conversation
+- When the user says "OK", "sure", "I'm ready", "start", "assess", or similar to indicate consent, you must immediately output the assessment
+- Do not ask whether the user wants practice after the assessment; the assessment ends the warmup
 
-**评估输出格式** (必须严格遵守):
-当你决定给出评估时,必须在回复的最后加上:
+Assessment output format (must strictly follow):
+When you decide to provide the assessment, you must append the following to the end of the reply:
 
 ###ASSESSMENT###
-\`\`\`json
+```json
 {
   "level": 5,
   "learningGoal": "interview",
   "algorithmProficiency": {"array": 7, "tree": 5, "graph": 3, "dp": 2, "sorting": 8, "searching": 7},
   "recommendedStartLevel": 4,
   "preferredLanguages": ["go", "python"],
-  "summary": "评估总结"
+  "summary": "Assessment summary"
 }
-\`\`\`
+```
 
-**示例**:
-用户: "可以开始了"
-助手: "明白了！根据我们的对话，我已经了解了你的情况。
+Example:
+User: "OK, let's start"
+Assistant: "Understood! Based on our conversation, I have the following summary for you.
 
 ###ASSESSMENT###
-\`\`\`json
+```json
 {
   "level": 6,
   "learningGoal": "interest",
   "algorithmProficiency": {"array": 7, "tree": 6, "graph": 5, "dp": 4, "sorting": 8, "searching": 7},
   "recommendedStartLevel": 5,
   "preferredLanguages": ["rust", "c++"],
-  "summary": "资深C/C++开发者,具备扎实的算法基础。当前目标是结合算法实践来学习Rust语言。"
+  "summary": "Experienced C/C++ developer with a solid algorithm foundation. Current goal is to learn Rust through algorithm practice."
 }
-\`\`\`
+```
 
-记住: ###ASSESSMENT### 标记是必须的,否则系统无法识别评估完成!`;
+Remember: The ###ASSESSMENT### marker is required; otherwise the system will not recognize completion of the assessment!`;
 
     const messages: LLMMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -419,7 +419,7 @@ class LLMService {
   }
 
   /**
-   * 生成分级提示
+   * Generate graded hints
    */
   async generateHint(
     problemDescription: string,
@@ -430,110 +430,110 @@ class LLMService {
     let systemPrompt = '';
     let userPrompt = '';
 
-    // Level 1: 思路提示 - 只给方向,不给具体方法
+    // Level 1: Conceptual hint - only give direction, no concrete method
     if (hintLevel === 1) {
-      systemPrompt = '你是一个算法导师。给出 Level 1 提示时,只能提供思考方向和关键问题,绝不能提及具体算法名称、数据结构或代码实现。';
-      userPrompt = `题目:
+      systemPrompt = 'You are an algorithm tutor. For Level 1 hints, only provide direction and key questions; do not mention specific algorithm names, data structures, or code implementations.';
+      userPrompt = `Problem:
 ${problemDescription}
 
-用户当前代码:
+User's current code:
 \`\`\`
-${userCode || '(用户还未编写代码)'}
+${userCode || '(user has not written code yet)'}
 \`\`\`
 
-请给出 **Level 1 思路提示**,要求:
-1. 用 2-3 个启发性问题引导用户思考
-2. 不要提及具体算法名称(如"动态规划"、"贪心"等)
-3. 不要给出数据结构建议
-4. 只提示问题的关键特征和可能的思考角度
-5. 控制在 100 字以内
+Please provide a **Level 1 conceptual hint**, requirements:
+1. Use 2-3 thought-provoking questions to guide the user's thinking
+2. Do not mention specific algorithm names (e.g., 'dynamic programming', 'greedy')
+3. Do not suggest specific data structures
+4. Only hint at key problem features and possible ways of thinking
+5. Keep within 100 words
 
-示例格式:
-"考虑一下:
-- 这个问题的核心是什么?
-- 你能找到问题中的重复计算吗?
-- 从最简单的情况开始,你会怎么做?"`;
+Example format:
+"Consider:
+- What is the core of this problem?
+- Can you find any repeated computations in the problem?
+- Starting from the simplest case, how would you approach it?"`;
     }
     
-    // Level 2: 框架提示 - 给出算法方向和大致步骤
+    // Level 2: Framework hint - give algorithm direction and main steps
     else if (hintLevel === 2) {
-      systemPrompt = '你是一个算法导师。给出 Level 2 提示时,可以提及算法类型和整体思路,但不要给出具体实现细节或代码。';
-      userPrompt = `题目:
+      systemPrompt = 'You are an algorithm tutor. For Level 2 hints, you may mention algorithm types and overall approach, but do not provide implementation details or code.';
+      userPrompt = `Problem:
 ${problemDescription}
 
-用户当前代码:
+User's current code:
 \`\`\`
-${userCode || '(用户还未编写代码)'}
+${userCode || '(user has not written code yet)'}
 \`\`\`
 
-请给出 **Level 2 框架提示**,要求:
-1. 明确指出适合的算法类型(如动态规划、贪心、双指针等)
-2. 给出算法的 3-5 个主要步骤(不要具体实现)
-3. 提示需要的数据结构
-4. 不要给出伪代码或代码片段
-5. 控制在 200 字以内
+Please provide a **Level 2 framework hint**, requirements:
+1. Clearly indicate suitable algorithm types (e.g., dynamic programming, greedy, two pointers)
+2. Provide the 3-5 main algorithm steps (no implementation details)
+3. Suggest the required data structures
+4. Do not provide pseudocode or code excerpts
+5. Keep within 200 words
 
-示例格式:
-"算法方向: [算法类型]
+Example format:
+"Algorithm direction: [algorithm types]
 
-主要步骤:
-1. [步骤1描述]
-2. [步骤2描述]
-3. [步骤3描述]
+Main steps:
+1. [Step 1 description]
+2. [Step 2 description]
+3. [Step 3 description]
 
-需要的数据结构: [数据结构名称]"`;
+Required data structures: [data structure name]"`;
     }
     
-    // Level 3: 伪代码提示 - 给出详细的伪代码逻辑
+    // Level 3: Pseudocode hint - provide detailed pseudocode logic
     else if (hintLevel === 3) {
-      systemPrompt = '你是一个算法导师。给出 Level 3 提示时,提供清晰的伪代码和详细的算法逻辑,但不要给出可直接运行的代码。';
-      userPrompt = `题目:
+      systemPrompt = 'You are an algorithm tutor. For Level 3 hints, provide clear pseudocode and detailed algorithmic logic, but do not provide runnable code.';
+      userPrompt = `Problem:
 ${problemDescription}
 
-用户当前代码:
+User's current code:
 \`\`\`
-${userCode || '(用户还未编写代码)'}
+${userCode || '(user has not written code yet)'}
 \`\`\`
 
-请给出 **Level 3 伪代码提示**,要求:
-1. 用伪代码描述完整算法流程
-2. 包含所有关键步骤和边界条件处理
-3. 说明变量的含义和初始化
-4. 用自然语言 + 伪代码混合表达,不要用具体编程语言语法
-5. 控制在 300 字以内
+Please provide a **Level 3 pseudocode hint**, requirements:
+1. Describe the complete algorithm flow in pseudocode
+2. Include all key steps and edge case handling
+3. Explain the meaning and initialization of variables
+4. Use a mix of natural language and pseudocode; avoid specific programming language syntax
+5. Keep within 300 words
 
-示例格式:
-"算法实现思路:
+Example format:
+"Algorithm implementation idea:
 
-初始化:
-- 创建数组 dp, 大小为 n
-- dp[0] = 初始值
+Initialization:
+- Create array dp of size n
+- dp[0] = initial value
 
-遍历过程:
-对于 i 从 1 到 n-1:
-    如果 [条件]:
-        dp[i] = [计算方式1]
-    否则:
-        dp[i] = [计算方式2]
+Iteration process:
+For i from 1 to n-1:
+    If [condition]:
+        dp[i] = [calculation method 1]
+    Else:
+        dp[i] = [calculation method 2]
 
-返回: dp[n-1]"`;
+Return: dp[n-1]"`;
     }
     
-    // Level 4: 代码片段提示 - 给出关键代码片段
+    // Level 4: Code snippet hint - provide key code fragments
     else {
-      // 根据语言调整代码示例
+      // Adjust code examples based on language
       const languageMap: Record<string, { name: string; comment: string; example: string }> = {
         python: {
           name: 'Python',
           comment: '#',
           example: `\`\`\`python
 def solution(input):
-    # 初始化
+    # Initialization
     result = []
     
-    # 主要逻辑
+    # Main logic
     for item in input:
-        # TODO: 你来完成这部分 - 处理每个元素
+        # TODO: please complete this part - process each element
         pass
     
     return result
@@ -544,12 +544,12 @@ def solution(input):
           comment: '//',
           example: `\`\`\`javascript
 function solution(input) {
-    // 初始化
+    // Initialization
     let result = [];
     
-    // 主要逻辑
+    // Main logic
     for (let item of input) {
-        // TODO: 你来完成这部分 - 处理每个元素
+        // TODO: please complete this part - process each element
     }
     
     return result;
@@ -561,12 +561,12 @@ function solution(input) {
           comment: '//',
           example: `\`\`\`typescript
 function solution(input: any[]): any[] {
-    // 初始化
+    // Initialization
     let result: any[] = [];
     
-    // 主要逻辑
+    // Main logic
     for (let item of input) {
-        // TODO: 你来完成这部分 - 处理每个元素
+      // TODO: please complete this part - process each element
     }
     
     return result;
@@ -578,12 +578,12 @@ function solution(input: any[]): any[] {
           comment: '//',
           example: `\`\`\`java
 public static List<Object> solution(List<Object> input) {
-    // 初始化
+    // Initialization
     List<Object> result = new ArrayList<>();
     
-    // 主要逻辑
+    // Main logic
     for (Object item : input) {
-        // TODO: 你来完成这部分 - 处理每个元素
+      // TODO: please complete this part - process each element
     }
     
     return result;
@@ -595,12 +595,12 @@ public static List<Object> solution(List<Object> input) {
           comment: '//',
           example: `\`\`\`cpp
 vector<int> solution(vector<int>& input) {
-    // 初始化
+    // Initialization
     vector<int> result;
     
-    // 主要逻辑
+    // Main logic
     for (int item : input) {
-        // TODO: 你来完成这部分 - 处理每个元素
+      // TODO: please complete this part - process each element
     }
     
     return result;
@@ -611,24 +611,24 @@ vector<int> solution(vector<int>& input) {
 
       const langConfig = languageMap[language] || languageMap['python'];
       
-      systemPrompt = `你是一个算法导师。给出 Level 4 提示时,提供接近完整的 ${langConfig.name} 代码实现,但保留部分让用户自己完成。`;
-      userPrompt = `题目:
+      systemPrompt = `You are an algorithm tutor. For Level 4 hints, provide near-complete ${langConfig.name} code implementations, but leave 1-2 key parts for the user to complete.`;
+      userPrompt = `Problem:
 ${problemDescription}
 
-用户当前代码:
+User's current code:
 \`\`\`
-${userCode || '(用户还未编写代码)'}
+${userCode || '(user has not written code yet)'}
 \`\`\`
 
-请给出 **Level 4 代码片段提示**,要求:
-1. 给出 70-80% 的代码实现
-2. 保留 1-2 个关键部分让用户填充(用注释标注 "${langConfig.comment} TODO: 你来完成这部分")
-3. 包含完整的函数定义和主要逻辑
-4. 添加必要的注释说明
-5. 使用 ${langConfig.name} 语言
-6. 控制在 400 字以内
+Please provide a **Level 4 code fragment hint**, requirements:
+1. Provide 70-80% of the code implementation
+2. Leave 1-2 key parts for the user to fill in (annotate with "${langConfig.comment} TODO: please complete this part")
+3. Include a complete function definition and main logic
+4. Add necessary comments
+5. Use ${langConfig.name}
+6. Keep within 400 words
 
-示例格式:
+Example format:
 ${langConfig.example}`;
     }
 
@@ -641,27 +641,28 @@ ${langConfig.example}`;
   }
 
   /**
-   * 分析代码质量
+   * Analyze code quality
    */
   async analyzeCode(code: string, language: string, problemDescription: string): Promise<any> {
-    const prompt = `请分析以下 ${language} 代码的质量:
+    const prompt = `Please analyze the quality of the following ${language} code:
 
-题目:
+Problem:
 ${problemDescription}
 
-代码:
+Code:
+
 \`\`\`${language}
 ${code}
 \`\`\`
 
-请从以下维度评分 (0-10):
-1. 时间复杂度
-2. 空间复杂度
-3. 代码可读性
-4. 代码规范性
-5. 边界处理
+Please rate on the following dimensions (0-10):
+1. Time complexity
+2. Space complexity
+3. Code readability
+4. Code style
+5. Edge case handling
 
-返回 JSON 格式:
+Return in JSON format:
 {
   "timeComplexity": {"score": 8, "actual": "O(n)", "optimal": "O(n)"},
   "spaceComplexity": {"score": 7, "actual": "O(n)", "optimal": "O(1)"},
@@ -669,11 +670,11 @@ ${code}
   "codeStyle": 9,
   "edgeCases": 7,
   "overallScore": 8,
-  "suggestions": ["建议1", "建议2"]
+  "suggestions": ["Suggestion 1", "Suggestion 2"]
 }`;
 
     const response = await this.chat([
-      { role: 'system', content: '你是一个专业的代码审查专家。你必须只返回有效的 JSON 格式,不要使用 Markdown 代码块包裹,不要添加任何解释文字。' },
+      { role: 'system', content: 'You are a professional code review expert. You must only return valid JSON, do not wrap responses in Markdown code blocks, and do not add any explanatory text.' },
       { role: 'user', content: prompt }
     ], 0.5, 1500);
 
@@ -682,15 +683,15 @@ ${code}
 }
 
 /**
- * 创建LLM服务实例(支持用户级配置)
- * @param userId 用户ID,如果提供则使用用户配置,否则使用系统默认
+ * Create LLM service instance (supports user-level configuration)
+ * @param userId User ID; if provided, use user-specific config; otherwise use system default
  */
 export async function createLLMService(userId?: string): Promise<LLMService> {
   const config = await getUserLLMConfig(userId);
   return new LLMService(config, userId);
 }
 
-// 导出默认实例(用于向后兼容,使用系统默认配置)
+// Export default instance (for backward compatibility, uses system default config)
 export const llmService = new LLMService({
   provider: 'deepseek',
   apiKey: process.env.OPENAI_API_KEY || '',

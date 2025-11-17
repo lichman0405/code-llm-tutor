@@ -303,7 +303,7 @@ export default function ProfilePage() {
                 <div>
                   <Label>Registration Time</Label>
                   <div className="mt-1 text-sm text-gray-600">
-                    {profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('zh-CN') : '-'}
+                    {profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('en-US') : '-'}
                   </div>
                 </div>
               </CardContent>

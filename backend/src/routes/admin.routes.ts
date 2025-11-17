@@ -5,13 +5,13 @@ import { z } from 'zod';
 
 const router = Router();
 
-// 所有管理员路由都需要认证和管理员权限
+// All admin routes require authentication and admin privileges
 router.use(authenticate);
 router.use(requireAdmin);
 
 /**
  * GET /api/admin/users
- * 获取所有用户列表（分页）
+ * Get paginated list of all users
  */
 router.get('/users', async (req, res) => {
   try {
@@ -60,13 +60,13 @@ router.get('/users', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Get users error:', error);
-    res.status(500).json({ error: '获取用户列表失败' });
+    res.status(500).json({ error: 'Failed to get users list.' });
   }
 });
 
 /**
  * PATCH /api/admin/users/:id/role
- * 修改用户角色
+ * Modify user role
  */
 const updateRoleSchema = z.object({
   role: z.enum(['USER', 'ADMIN']),
@@ -88,16 +88,16 @@ router.patch('/users/:id/role', async (req, res) => {
       },
     });
 
-    res.json({ user, message: '用户角色已更新' });
+    res.json({ user, message: 'User role updated' });
   } catch (error: any) {
     console.error('Update user role error:', error);
-    res.status(500).json({ error: '更新用户角色失败' });
+    res.status(500).json({ error: 'Failed to update user role' });
   }
 });
 
 /**
  * GET /api/admin/problems
- * 获取所有题目（管理视图，包含统计信息和可见性）
+ * Get all problems (admin view, includes stats and visibility)
  */
 router.get('/problems', async (req, res) => {
   try {
@@ -153,13 +153,13 @@ router.get('/problems', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Get admin problems error:', error);
-    res.status(500).json({ error: '获取题目列表失败' });
+    res.status(500).json({ error: 'Failed to get problem list' });
   }
 });
 
 /**
  * DELETE /api/admin/problems/:id
- * 删除题目
+ * Delete problem
  */
 router.delete('/problems/:id', async (req, res) => {
   try {
@@ -169,39 +169,39 @@ router.delete('/problems/:id', async (req, res) => {
       where: { id },
     });
 
-    res.json({ message: '题目已删除' });
+    res.json({ message: 'Problem deleted' });
   } catch (error: any) {
     console.error('Delete problem error:', error);
-    res.status(500).json({ error: '删除题目失败' });
+    res.status(500).json({ error: 'Failed to delete problem' });
   }
 });
 
 /**
  * DELETE /api/admin/users/:id
- * 软删除用户
+ * Soft-delete user
  */
 router.delete('/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // 检查目标用户
+    // Check target user
     const targetUser = await prisma.user.findUnique({
       where: { id }
     });
 
     if (!targetUser) {
-      return res.status(404).json({ error: '用户不存在' });
+      return res.status(404).json({ error: 'User not found' });
     }
 
     if (targetUser.deleted) {
-      return res.status(400).json({ error: '用户已被删除' });
+      return res.status(400).json({ error: 'User already deleted' });
     }
 
     if (targetUser.role === 'ADMIN') {
-      return res.status(403).json({ error: '不能删除管理员账户' });
+      return res.status(403).json({ error: 'Cannot delete admin account' });
     }
 
-    // 软删除
+    // Soft delete
     await prisma.user.update({
       where: { id },
       data: {
@@ -210,39 +210,39 @@ router.delete('/users/:id', async (req, res) => {
       }
     });
 
-    res.json({ message: '用户已删除', userId: id });
+    res.json({ message: 'User deleted', userId: id });
   } catch (error: any) {
     console.error('Delete user error:', error);
-    res.status(500).json({ error: '删除用户失败' });
+    res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 
 /**
  * POST /api/admin/users/:id/require-password-reset
- * 要求用户重置密码
+ * Require user to reset password
  */
 router.post('/users/:id/require-password-reset', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // 检查目标用户
+    // Check target user
     const targetUser = await prisma.user.findUnique({
       where: { id }
     });
 
     if (!targetUser) {
-      return res.status(404).json({ error: '用户不存在' });
+      return res.status(404).json({ error: 'User not found' });
     }
 
     if (targetUser.deleted) {
-      return res.status(400).json({ error: '用户已被删除' });
+      return res.status(400).json({ error: 'User already deleted' });
     }
 
     if (targetUser.role === 'ADMIN') {
-      return res.status(403).json({ error: '不能对管理员账户执行此操作' });
+      return res.status(403).json({ error: 'Cannot perform this action on an admin account' });
     }
 
-    // 设置密码重置标志
+    // Set password reset flag
     await prisma.user.update({
       where: { id },
       data: {
@@ -250,16 +250,16 @@ router.post('/users/:id/require-password-reset', async (req, res) => {
       }
     });
 
-    res.json({ message: '已要求用户重置密码', userId: id });
+    res.json({ message: 'Requested user to reset password', userId: id });
   } catch (error: any) {
     console.error('Require password reset error:', error);
-    res.status(500).json({ error: '设置密码重置失败' });
+    res.status(500).json({ error: 'Failed to set password reset flag' });
   }
 });
 
 /**
  * POST /api/admin/users/:id/reset-password
- * 管理员直接重置用户密码（设置临时密码）
+ * Admin reset user password directly (set temporary password)
  */
 router.post('/users/:id/reset-password', async (req, res) => {
   try {
@@ -267,53 +267,53 @@ router.post('/users/:id/reset-password', async (req, res) => {
     const { newPassword } = req.body;
 
     if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ error: '新密码至少需要6位' });
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
     }
 
-    // 检查目标用户
+    // Check target user
     const targetUser = await prisma.user.findUnique({
       where: { id }
     });
 
     if (!targetUser) {
-      return res.status(404).json({ error: '用户不存在' });
+      return res.status(404).json({ error: 'User not found' });
     }
 
     if (targetUser.deleted) {
-      return res.status(400).json({ error: '用户已被删除' });
+      return res.status(400).json({ error: 'User already deleted' });
     }
 
     if (targetUser.role === 'ADMIN') {
-      return res.status(403).json({ error: '不能对管理员账户执行此操作' });
+      return res.status(403).json({ error: 'Cannot perform this action on an admin account' });
     }
 
-    // 加密新密码
+    // Hash the new password
     const bcrypt = require('bcryptjs');
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // 更新密码并设置强制重置标志
+    // Update password and set the password reset required flag
     await prisma.user.update({
       where: { id },
       data: {
         passwordHash: hashedPassword,
-        passwordResetRequired: true // 用户下次登录必须修改密码
+        passwordResetRequired: true // User will be required to change password at next login
       }
     });
 
     res.json({ 
-      message: '密码已重置，用户下次登录时将被要求修改密码', 
+      message: 'Password reset; user will be required to change password at next login', 
       userId: id,
-      temporaryPassword: newPassword // 返回临时密码供管理员告知用户
+      temporaryPassword: newPassword // Return temporary password for admin to notify user
     });
   } catch (error: any) {
     console.error('Reset password error:', error);
-    res.status(500).json({ error: '重置密码失败' });
+    res.status(500).json({ error: 'Failed to reset password' });
   }
 });
 
 /**
  * GET /api/admin/stats
- * 获取平台统计信息
+ * Get platform statistics
  */
 router.get('/stats', async (req, res) => {
   try {
@@ -324,7 +324,7 @@ router.get('/stats', async (req, res) => {
       prisma.user.count({ where: { role: 'ADMIN' } }),
     ]);
 
-    // 获取最近7天的提交统计
+    // Get submission statistics for the last 7 days
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -347,8 +347,9 @@ router.get('/stats', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Get admin stats error:', error);
-    res.status(500).json({ error: '获取统计信息失败' });
+    res.status(500).json({ error: 'Failed to get statistics' });
   }
 });
 
 export default router;
+// No Chinese found — no changes required.

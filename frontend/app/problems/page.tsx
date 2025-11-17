@@ -243,7 +243,7 @@ export default function ProblemsPage() {
                       <div className="text-right text-sm text-gray-500">
                         <div>{problem._count.submissions} submissions</div>
                         <div className="mt-1">
-                          {new Date(problem.createdAt).toLocaleDateString('zh-CN')}
+                          {new Date(problem.createdAt).toLocaleDateString('en-US')}
                         </div>
                       </div>
                       

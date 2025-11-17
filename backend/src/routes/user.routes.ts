@@ -8,11 +8,11 @@ import axios from 'axios';
 
 const router: Router = Router();
 
-// ==================== 用户画像 API ====================
+// ==================== User Profile API ====================
 
 /**
  * GET /api/user/profile
- * 获取用户完整信息
+ * Get complete user information
  */
 router.get('/profile', authenticate, async (req, res) => {
   try {
@@ -45,7 +45,7 @@ router.get('/profile', authenticate, async (req, res) => {
     });
 
     if (!user) {
-      return res.status(404).json({ error: '用户不存在' });
+      return res.status(404).json({ error: 'User does not exist' });
     }
 
     res.json({
@@ -54,13 +54,13 @@ router.get('/profile', authenticate, async (req, res) => {
     });
   } catch (error) {
     console.error('Get profile error:', error);
-    res.status(500).json({ error: '获取用户信息失败' });
+    res.status(500).json({ error: 'Failed to get user information' });
   }
 });
 
 /**
  * PUT /api/user/profile
- * 更新用户画像 (仅可编辑字段)
+ * Update user profile (editable fields only)
  */
 const updateProfileSchema = z.object({
   learningGoal: z.enum(['interview', 'interest', 'competition']).optional(),
@@ -71,7 +71,7 @@ router.put('/profile', authenticate, async (req, res) => {
   try {
     const userId = req.user?.userId;
     if (!userId) {
-      return res.status(401).json({ error: '未认证' });
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
     const validationResult = updateProfileSchema.safeParse(req.body);
@@ -111,24 +111,24 @@ router.put('/profile', authenticate, async (req, res) => {
     });
   } catch (error) {
     console.error('Update profile error:', error);
-    res.status(500).json({ error: '更新用户信息失败' });
+    res.status(500).json({ error: 'Failed to update user information' });
   }
 });
 
-// ==================== LLM 配置 API ====================
+// ==================== LLM Configuration API ====================
 
 /**
  * GET /api/user/llm-config/current
- * 获取当前实际使用的LLM配置(用户配置或系统默认)
+ * Get currently used LLM configuration (user config or system default)
  */
 router.get('/llm-config/current', authenticate, async (req, res) => {
   try {
     const userId = req.user?.userId;
     if (!userId) {
-      return res.status(401).json({ error: '未认证' });
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    // 获取实际使用的配置
+    // Get actually used configuration
     const config = await getUserLLMConfig(userId);
 
     res.json({
@@ -138,24 +138,24 @@ router.get('/llm-config/current', authenticate, async (req, res) => {
         model: config.model,
         baseURL: config.baseURL,
         isUserConfig: config.isUserConfig,
-        description: config.isUserConfig ? '使用个人配置' : '使用系统默认配置(DeepSeek)',
+        description: config.isUserConfig ? 'Using personal configuration' : 'Using system default configuration (DeepSeek)',
       },
     });
   } catch (error) {
     console.error('Get current LLM config error:', error);
-    res.status(500).json({ error: '获取当前LLM配置失败' });
+    res.status(500).json({ error: 'Failed to get current LLM configuration' });
   }
 });
 
 /**
  * GET /api/user/llm-config
- * 获取用户的 LLM 配置
+ * Get user's LLM configuration
  */
 router.get('/llm-config', authenticate, async (req, res) => {
   try {
     const userId = req.user?.userId;
     if (!userId) {
-      return res.status(401).json({ error: '未认证' });
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
     const config = await prisma.lLMConfig.findUnique({
@@ -169,7 +169,7 @@ router.get('/llm-config', authenticate, async (req, res) => {
       });
     }
 
-    // 解密 API Key (仅返回脱敏版本)
+    // Decrypt API Key (return masked version only)
     let maskedApiKey = null;
     if (config.apiKeyEncrypted) {
       try {
@@ -197,17 +197,17 @@ router.get('/llm-config', authenticate, async (req, res) => {
     });
   } catch (error) {
     console.error('Get LLM config error:', error);
-    res.status(500).json({ error: '获取 LLM 配置失败' });
+    res.status(500).json({ error: 'Failed to get LLM configuration' });
   }
 });
 
 /**
  * POST /api/user/llm-config
- * 创建或更新用户的 LLM 配置
+ * Create or update user's LLM configuration
  */
 const llmConfigSchema = z.object({
   provider: z.enum(['openai', 'anthropic', 'custom']),
-  apiKey: z.string().optional(), // 如果不传则保持原有密钥
+  apiKey: z.string().optional(), // If not provided, keep existing key
   model: z.string().optional(),
   baseUrl: z.string().optional(),
   customHeaders: z.record(z.string()).optional(),
@@ -217,7 +217,7 @@ router.post('/llm-config', authenticate, async (req, res) => {
   try {
     const userId = req.user?.userId;
     if (!userId) {
-      return res.status(401).json({ error: '未认证' });
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
     const validationResult = llmConfigSchema.safeParse(req.body);
@@ -227,7 +227,7 @@ router.post('/llm-config', authenticate, async (req, res) => {
 
     const { provider, apiKey, model, baseUrl, customHeaders } = validationResult.data;
 
-    // 检查是否已有配置
+    // Check if configuration already exists
     const existingConfig = await prisma.lLMConfig.findUnique({
       where: { userId },
     });
@@ -239,20 +239,20 @@ router.post('/llm-config', authenticate, async (req, res) => {
       customHeaders: customHeaders || null,
     };
 
-    // 如果提供了新的 API Key,则加密存储
+    // If new API Key is provided, encrypt and store
     if (apiKey) {
       configData.apiKeyEncrypted = encrypt(apiKey);
     }
 
     let savedConfig;
     if (existingConfig) {
-      // 更新现有配置
+      // Update existing configuration
       savedConfig = await prisma.lLMConfig.update({
         where: { userId },
         data: configData,
       });
     } else {
-      // 创建新配置
+      // Create new configuration
       savedConfig = await prisma.lLMConfig.create({
         data: {
           userId,
@@ -261,7 +261,7 @@ router.post('/llm-config', authenticate, async (req, res) => {
       });
     }
 
-    // 返回脱敏后的数据
+    // Return masked data
     let maskedApiKey = null;
     if (savedConfig.apiKeyEncrypted) {
       try {
@@ -287,19 +287,19 @@ router.post('/llm-config', authenticate, async (req, res) => {
     });
   } catch (error) {
     console.error('Save LLM config error:', error);
-    res.status(500).json({ error: '保存 LLM 配置失败' });
+    res.status(500).json({ error: 'Failed to save LLM configuration' });
   }
 });
 
 /**
  * DELETE /api/user/llm-config
- * 删除用户的 LLM 配置 (恢复使用系统默认)
+ * Delete user's LLM configuration (restore to system default)
  */
 router.delete('/llm-config', authenticate, async (req, res) => {
   try {
     const userId = req.user?.userId;
     if (!userId) {
-      return res.status(401).json({ error: '未认证' });
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
     await prisma.lLMConfig.deleteMany({
@@ -308,45 +308,45 @@ router.delete('/llm-config', authenticate, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'LLM 配置已删除,将使用系统默认配置',
+      message: 'LLM configuration deleted, will use system default configuration',
     });
   } catch (error) {
     console.error('Delete LLM config error:', error);
-    res.status(500).json({ error: '删除 LLM 配置失败' });
+    res.status(500).json({ error: 'Failed to delete LLM configuration' });
   }
 });
 
 /**
  * POST /api/user/llm-config/test
- * 测试 LLM 连接
+ * Test LLM connection
  */
 router.post('/llm-config/test', authenticate, async (req, res) => {
   try {
     const userId = req.user?.userId;
     if (!userId) {
-      return res.status(401).json({ error: '未认证' });
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    // 获取用户配置
+    // Get user configuration
     const config = await prisma.lLMConfig.findUnique({
       where: { userId },
     });
 
     if (!config || !config.apiKeyEncrypted) {
-      return res.status(400).json({ error: '请先配置 API Key' });
+      return res.status(400).json({ error: 'Please configure API Key first' });
     }
 
-    // 解密 API Key
+    // Decrypt API Key
     const apiKey = decrypt(config.apiKeyEncrypted);
     const baseUrl = config.baseUrl || (config.provider === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com');
     const model = config.model || (config.provider === 'openai' ? 'gpt-3.5-turbo' : 'claude-3-haiku-20240307');
 
-    // 解析 customHeaders
+    // Parse customHeaders
     const customHeaders = (config.customHeaders as Record<string, string>) || {};
 
-    // 测试连接
+    // Test connection
     if (config.provider === 'openai' || config.provider === 'custom') {
-      // OpenAI 格式测试
+      // OpenAI format test
       const response = await axios.post(
         `${baseUrl}/v1/chat/completions`,
         {
@@ -366,14 +366,14 @@ router.post('/llm-config/test', authenticate, async (req, res) => {
 
       res.json({
         success: true,
-        message: 'LLM 连接测试成功',
+        message: 'LLM connection test successful',
         data: {
           model: response.data.model,
           provider: config.provider,
         },
       });
     } else if (config.provider === 'anthropic') {
-      // Anthropic 格式测试
+      // Anthropic format test
       const response = await axios.post(
         `${baseUrl}/v1/messages`,
         {
@@ -394,7 +394,7 @@ router.post('/llm-config/test', authenticate, async (req, res) => {
 
       res.json({
         success: true,
-        message: 'LLM 连接测试成功',
+        message: 'LLM connection test successful',
         data: {
           model: response.data.model,
           provider: config.provider,
@@ -404,7 +404,7 @@ router.post('/llm-config/test', authenticate, async (req, res) => {
   } catch (error: any) {
     console.error('Test LLM connection error:', error.response?.data || error.message);
     res.status(500).json({
-      error: 'LLM 连接测试失败',
+      error: 'LLM connection test failed',
       details: error.response?.data?.error?.message || error.message,
     });
   }

@@ -95,7 +95,7 @@ export default function ResetPasswordPage() {
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Reset Password</CardTitle>
           <CardDescription className="text-center">
-            {username && `Hello, ${username}. `}Administrator requires you to reset your password before continuing
+            {username && `Hello, ${username}. `}The administrator requires you to reset your password before continuing
           </CardDescription>
         </CardHeader>
         <CardContent>

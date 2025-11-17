@@ -5,14 +5,14 @@ import { z } from 'zod';
 
 const router = Router();
 
-// 注册 schema
+// Register schema
 const registerSchema = z.object({
   username: z.string().min(3).max(50),
   email: z.string().email(),
   password: z.string().min(6),
 });
 
-// 登录 schema
+// Login schema
 const loginSchema = z.object({
   usernameOrEmail: z.string(),
   password: z.string(),
@@ -20,7 +20,7 @@ const loginSchema = z.object({
 
 /**
  * POST /api/auth/register
- * 用户注册
+ * User registration
  */
 router.post('/register', async (req: Request, res: Response) => {
   try {
@@ -32,14 +32,14 @@ router.post('/register', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Register error:', error);
     res.status(400).json({
-      error: error.message || '注册失败',
+      error: error.message || 'Registration failed',
     });
   }
 });
 
 /**
  * POST /api/auth/login
- * 用户登录
+ * User login
  */
 router.post('/login', async (req: Request, res: Response) => {
   try {
@@ -51,20 +51,20 @@ router.post('/login', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Login error:', error);
     res.status(401).json({
-      error: error.message || '登录失败',
+      error: error.message || 'Login failed',
     });
   }
 });
 
 /**
  * POST /api/auth/register-admin
- * 注册管理员账号（仅开发环境）
+ * Register admin account (development only)
  */
 router.post('/register-admin', async (req: Request, res: Response) => {
-  // 仅在开发环境下允许使用
+  // Only allowed in development environment
   if (process.env.NODE_ENV === 'production') {
     return res.status(403).json({
-      error: '此接口仅在开发环境下可用',
+      error: 'This endpoint is only available in development environment',
     });
   }
 
@@ -75,23 +75,23 @@ router.post('/register-admin', async (req: Request, res: Response) => {
     
     res.status(201).json({
       ...result,
-      message: '管理员账号创建成功',
+      message: 'Admin account created successfully',
     });
   } catch (error: any) {
     console.error('Register admin error:', error);
     res.status(400).json({
-      error: error.message || '创建管理员账号失败',
+      error: error.message || 'Failed to create admin account',
     });
   }
 });
 
 /**
  * GET /api/auth/me
- * 获取当前用户信息
+ * Get current user information
  */
 router.get('/me', async (req: Request, res: Response) => {
   try {
-    // TODO: 实现 auth 中间件后完成
+    // TODO: Complete after implementing auth middleware
     res.json({
       success: true,
       data: { message: 'Not implemented yet' },
@@ -106,13 +106,13 @@ router.get('/me', async (req: Request, res: Response) => {
 
 /**
  * POST /api/auth/reset-password
- * 重置密码
+ * Reset password
  */
 router.post('/reset-password', async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: '未提供认证令牌' });
+      return res.status(401).json({ error: 'Authentication token not provided' });
     }
 
     const token = authHeader.substring(7);
@@ -122,17 +122,17 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     try {
       decoded = require('jsonwebtoken').verify(token, JWT_SECRET);
     } catch (error) {
-      return res.status(401).json({ error: 'Token 无效或已过期' });
+      return res.status(401).json({ error: 'Token is invalid or expired' });
     }
 
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: '请提供当前密码和新密码' });
+      return res.status(400).json({ error: 'Please provide current password and new password' });
     }
 
     if (newPassword.length < 6) {
-      return res.status(400).json({ error: '新密码至少6位' });
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
     }
 
     const user = await prisma.user.findUnique({
@@ -140,18 +140,18 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     });
 
     if (!user) {
-      return res.status(404).json({ error: '用户不存在' });
+      return res.status(404).json({ error: 'User does not exist' });
     }
 
-    // 验证当前密码
+    // Verify current password
     const bcrypt = require('bcryptjs');
     const isValidPassword = await bcrypt.compare(currentPassword, user.passwordHash);
 
     if (!isValidPassword) {
-      return res.status(401).json({ error: '当前密码错误' });
+      return res.status(401).json({ error: 'Current password is incorrect' });
     }
 
-    // 更新密码并清除重置标志
+    // Update password and clear reset flag
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
       where: { id: decoded.userId },
@@ -161,10 +161,10 @@ router.post('/reset-password', async (req: Request, res: Response) => {
       },
     });
 
-    res.json({ message: '密码已重置' });
+    res.json({ message: 'Password has been reset' });
   } catch (error: any) {
     console.error('Reset password error:', error);
-    res.status(500).json({ error: '密码重置失败' });
+    res.status(500).json({ error: 'Failed to reset password' });
   }
 });
 

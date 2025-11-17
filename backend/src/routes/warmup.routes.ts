@@ -70,35 +70,35 @@ router.post('/chat', async (req, res) => {
       });
     }
 
-    // 添加用户消息到对话历史
+    // Add user message to conversation history
     const updatedMessages = [
       ...conversation.messages as any[],
       { role: 'user', content: message },
     ];
 
-    // 创建用户专属的LLM服务(warmup使用系统默认即可,不需要用户配置)
+    // Create user-specific LLM service (warmup uses system default, no user configuration needed)
     const userLLMService = await createLLMService();
     
-    // 调用 LLM 生成回复
+    // Call LLM to generate response
     const llmResponse = await userLLMService.warmupChat(
       updatedMessages as LLMMessage[],
       message
     );
     const assistantMessage = llmResponse.content;
 
-    // 检查是否包含评估结果
+    // Check if contains assessment result
     let assessment = null;
     let displayMessage = assistantMessage;
     let shouldComplete = false;
 
     if (assistantMessage.includes('###ASSESSMENT###')) {
-      // 解析评估结果
+      // Parse assessment result
       try {
         const parts = assistantMessage.split('###ASSESSMENT###');
-        displayMessage = parts[0].trim(); // 评估前的对话内容
+        displayMessage = parts[0].trim(); // Dialogue content before assessment
         const assessmentJson = parts[1].trim();
         
-        // 提取 JSON (可能被 Markdown 包裹)
+        // Extract JSON (may be wrapped in Markdown)
         const jsonMatch = assessmentJson.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/) || 
                          [null, assessmentJson];
         const jsonString = jsonMatch[1].trim();
@@ -106,7 +106,7 @@ router.post('/chat', async (req, res) => {
         assessment = JSON.parse(jsonString);
         shouldComplete = true;
 
-        // 更新用户信息
+        // Update user information
         await prisma.user.update({
           where: { id: userId },
           data: {
@@ -122,7 +122,7 @@ router.post('/chat', async (req, res) => {
           },
         });
 
-        // 保存评估结果到对话记录
+        // Save assessment result to conversation record
         await prisma.warmupConversation.update({
           where: { id: conversation.id },
           data: {
@@ -140,14 +140,14 @@ router.post('/chat', async (req, res) => {
         });
       } catch (error) {
         console.error('Failed to parse assessment:', error);
-        // 如果解析失败,仍然保存对话但不标记为完成
+        // If parsing fails, still save conversation but don't mark as completed
       }
     }
 
-    // 添加助手消息到对话历史
+    // Add assistant message to conversation history
     updatedMessages.push({ role: 'assistant', content: assistantMessage });
 
-    // 更新对话记录
+    // Update conversation record
     await prisma.warmupConversation.update({
       where: { id: conversation.id },
       data: { messages: updatedMessages },
@@ -161,7 +161,7 @@ router.post('/chat', async (req, res) => {
     });
   } catch (error) {
     console.error('Warmup chat error:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -197,7 +197,7 @@ router.get('/history', async (req, res) => {
     res.json({ conversations });
   } catch (error) {
     console.error('Get warmup history error:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

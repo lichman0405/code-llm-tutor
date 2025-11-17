@@ -6,29 +6,29 @@ import { z } from 'zod';
 
 const router = Router();
 
-// 生成题目请求 schema
+// Generate problem request schema
 const generateProblemSchema = z.object({
   difficulty: z.number().min(1).max(10).optional(),
   algorithmTypes: z.array(z.string()).optional(),
-  forceNew: z.boolean().optional(), // 是否强制生成新题目
+  forceNew: z.boolean().optional(), // Whether to force generate new problem
 });
 
 /**
  * POST /api/problems/generate
- * 生成新题目 (基于用户水平)
+ * Generate new problem (based on user level)
  */
 router.post('/generate', async (req, res) => {
   try {
-    // 验证 token
+    // Verify token
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) {
-      return res.status(401).json({ error: '未提供认证 token' });
+      return res.status(401).json({ error: 'Authentication token not provided' });
     }
 
     const payload = verifyToken(token);
     const userId = payload.userId;
 
-    // 获取用户信息
+    // Get user information
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -38,47 +38,47 @@ router.post('/generate', async (req, res) => {
     });
 
     if (!user) {
-      return res.status(404).json({ error: '用户不存在' });
+      return res.status(404).json({ error: 'User does not exist' });
     }
 
-    // 解析请求参数
+    // Parse request parameters
     const validationResult = generateProblemSchema.safeParse(req.body);
     const { difficulty, algorithmTypes, forceNew } = validationResult.success
       ? validationResult.data
       : { difficulty: undefined, algorithmTypes: undefined, forceNew: false };
 
-    // 使用用户当前水平或指定难度
+    // Use user's current level or specified difficulty
     const targetDifficulty = difficulty || user.currentLevel;
     
-    // 智能选择算法类型 (优先选择薄弱项)
+    // Intelligently select algorithm types (prioritize weak areas)
     let targetAlgorithmTypes: string[];
     if (algorithmTypes) {
       targetAlgorithmTypes = algorithmTypes;
     } else {
       const proficiency = user.algorithmProficiency as Record<string, number>;
       if (proficiency && Object.keys(proficiency).length > 0) {
-        // 选择熟练度最低的 2-3 个算法类型
+        // Select 2-3 algorithm types with lowest proficiency
         targetAlgorithmTypes = Object.entries(proficiency)
-          .sort((a, b) => a[1] - b[1]) // 按熟练度升序
+          .sort((a, b) => a[1] - b[1]) // Sort by proficiency ascending
           .slice(0, 2)
           .map(([type]) => type);
       } else {
-        targetAlgorithmTypes = ['array', 'string']; // 默认基础类型
+        targetAlgorithmTypes = ['array', 'string']; // Default basic types
       }
     }
 
-    // 【混合模式】如果不是强制生成新题,先尝试从数据库中查找合适的题目
+    // [Hybrid Mode] If not forcing new problem, first try to find suitable problem from database
     if (!forceNew) {
       const existingProblem = await prisma.problem.findFirst({
         where: {
           difficulty: targetDifficulty,
           algorithmTypes: { hasSome: targetAlgorithmTypes },
-          // 只查找公开题目或用户自己创建的题目
+          // Only find public problems or user's own problems
           OR: [
             { isPublic: true },
             { creatorId: userId }
           ],
-          // 并且用户没有提交过
+          // And user hasn't submitted yet
           NOT: {
             submissions: {
               some: { userId }
@@ -92,7 +92,7 @@ router.post('/generate', async (req, res) => {
         }
       });
 
-      // 如果找到已有题目,直接返回
+      // If found existing problem, return directly
       if (existingProblem) {
         console.log('Reusing existing problem:', existingProblem.id, existingProblem.title, 'for user:', userId);
         return res.json({
@@ -110,10 +110,10 @@ router.post('/generate', async (req, res) => {
       }
     }
 
-    // 如果没有合适的题目,调用 LLM 生成新题目
+    // If no suitable problem, call LLM to generate new problem
     console.log('Generating new problem with LLM...');
     
-    // 创建用户专属的LLM服务
+    // Create user-specific LLM service
     const userLLMService = await createLLMService(userId);
     
     const problemJsonString = await userLLMService.generateProblem(
@@ -123,17 +123,17 @@ router.post('/generate', async (req, res) => {
       user.algorithmProficiency as Record<string, number>
     );
 
-    // 解析 LLM 返回的 JSON
+    // Parse LLM returned JSON
     let problemData;
     try {
       const jsonString = extractJSON(problemJsonString);
       problemData = JSON.parse(jsonString);
     } catch (parseError) {
       console.error('Failed to parse LLM response:', problemJsonString);
-      return res.status(500).json({ error: 'LLM 返回格式错误' });
+      return res.status(500).json({ error: 'LLM response format error' });
     }
 
-    // 保存题目到数据库
+    // Save problem to database
     const problem = await prisma.problem.create({
       data: {
         title: problemData.title,
@@ -147,8 +147,8 @@ router.post('/generate', async (req, res) => {
         expectedComplexity: problemData.timeComplexity || 'O(n)',
         generatedBy: 'LLM',
         generationPrompt: `Difficulty: ${targetDifficulty}, Types: ${targetAlgorithmTypes.join(', ')}`,
-        creatorId: userId, // 保存创建者
-        isPublic: false,   // 默认私有
+        creatorId: userId, // Save creator
+        isPublic: false,   // Default private
       },
     });
 
@@ -169,19 +169,19 @@ router.post('/generate', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Generate problem error:', error);
-    res.status(500).json({ error: error.message || '生成题目失败' });
+    res.status(500).json({ error: error.message || 'Failed to generate problem' });
   }
 });
 
 /**
  * GET /api/problems
- * 获取题目列表（只显示用户自己的题目或公开题目）
+ * Get problem list (only show user's own problems or public problems)
  */
 router.get('/', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) {
-      return res.status(401).json({ error: '未提供认证 token' });
+      return res.status(401).json({ error: 'Authentication token not provided' });
     }
 
     const payload = verifyToken(token);
@@ -192,11 +192,11 @@ router.get('/', async (req, res) => {
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
 
-    // 构建查询条件：用户自己创建的 OR 公开的题目
+    // Build query condition: user's own OR public problems
     const where: any = {
       OR: [
-        { creatorId: userId },    // 用户自己创建的
-        { isPublic: true },       // 公开的题目
+        { creatorId: userId },    // User's own created
+        { isPublic: true },       // Public problems
       ]
     };
     
@@ -237,19 +237,19 @@ router.get('/', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Get problems error:', error);
-    res.status(500).json({ error: '获取题目列表失败' });
+    res.status(500).json({ error: 'Failed to get problem list' });
   }
 });
 
 /**
  * GET /api/problems/:id
- * 获取题目详情（需要权限检查）
+ * Get problem details (requires permission check)
  */
 router.get('/:id', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) {
-      return res.status(401).json({ error: '未提供认证 token' });
+      return res.status(401).json({ error: 'Authentication token not provided' });
     }
 
     const payload = verifyToken(token);
@@ -277,7 +277,7 @@ router.get('/:id', async (req, res) => {
 
     if (!problem) {
       console.log('❌ Problem not found:', problemId);
-      return res.status(404).json({ error: '题目不存在' });
+      return res.status(404).json({ error: 'Problem does not exist' });
     }
 
     console.log('📋 Problem found:', {
@@ -288,10 +288,10 @@ router.get('/:id', async (req, res) => {
       requestUserId: userId,
     });
 
-    // 权限检查：只能访问自己创建的题目或公开题目
+    // Permission check: can only access own problems or public problems
     if (!problem.isPublic && problem.creatorId !== userId) {
       console.log('🚫 Permission denied: problem is private and user is not creator');
-      return res.status(404).json({ error: '题目不存在' });
+      return res.status(404).json({ error: 'Problem does not exist' });
     }
 
     console.log('✅ Permission granted, returning problem');
@@ -305,41 +305,41 @@ router.get('/:id', async (req, res) => {
     res.json(responseData);
   } catch (error: any) {
     console.error('Get problem error:', error);
-    res.status(500).json({ error: '获取题目失败' });
+    res.status(500).json({ error: 'Failed to get problem' });
   }
 });
 
 /**
  * PATCH /api/problems/:id/visibility
- * 切换题目的公开/私有状态
+ * Toggle problem's public/private status
  */
 router.patch('/:id/visibility', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) {
-      return res.status(401).json({ error: '未提供认证 token' });
+      return res.status(401).json({ error: 'Authentication token not provided' });
     }
 
     const payload = verifyToken(token);
     const userId = payload.userId;
     const problemId = req.params.id;
 
-    // 查找题目
+    // Find problem
     const problem = await prisma.problem.findUnique({
       where: { id: problemId },
       select: { id: true, creatorId: true, isPublic: true },
     });
 
     if (!problem) {
-      return res.status(404).json({ error: '题目不存在' });
+      return res.status(404).json({ error: 'Problem does not exist' });
     }
 
-    // 检查权限：只有创建者可以修改
+    // Check permission: only creator can modify
     if (problem.creatorId !== userId) {
-      return res.status(403).json({ error: '只能修改自己创建的题目' });
+      return res.status(403).json({ error: 'Can only modify own problems' });
     }
 
-    // 切换可见性
+    // Toggle visibility
     const updatedProblem = await prisma.problem.update({
       where: { id: problemId },
       data: { isPublic: !problem.isPublic },
@@ -347,59 +347,59 @@ router.patch('/:id/visibility', async (req, res) => {
     });
 
     res.json({
-      message: updatedProblem.isPublic ? '题目已设为公开' : '题目已设为私有',
+      message: updatedProblem.isPublic ? 'Problem set to public' : 'Problem set to private',
       isPublic: updatedProblem.isPublic,
     });
   } catch (error: any) {
     console.error('Toggle visibility error:', error);
-    res.status(500).json({ error: '切换可见性失败' });
+    res.status(500).json({ error: 'Failed to toggle visibility' });
   }
 });
 
 /**
  * DELETE /api/problems/:id
- * 删除题目（只能删除自己的私有题目）
+ * Delete problem (can only delete own private problems)
  */
 router.delete('/:id', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) {
-      return res.status(401).json({ error: '未提供认证 token' });
+      return res.status(401).json({ error: 'Authentication token not provided' });
     }
 
     const payload = verifyToken(token);
     const userId = payload.userId;
     const problemId = req.params.id;
 
-    // 查找题目
+    // Find problem
     const problem = await prisma.problem.findUnique({
       where: { id: problemId },
       select: { id: true, creatorId: true, isPublic: true, title: true },
     });
 
     if (!problem) {
-      return res.status(404).json({ error: '题目不存在' });
+      return res.status(404).json({ error: 'Problem does not exist' });
     }
 
-    // 检查权限：只有创建者可以删除
+    // Check permission: only creator can delete
     if (problem.creatorId !== userId) {
-      return res.status(403).json({ error: '只能删除自己创建的题目' });
+      return res.status(403).json({ error: 'Can only delete own problems' });
     }
 
-    // 只能删除私有题目
+    // Can only delete private problems
     if (problem.isPublic) {
-      return res.status(403).json({ error: '公开题目无法删除，请先设为私有' });
+      return res.status(403).json({ error: 'Cannot delete public problem, please set to private first' });
     }
 
-    // 删除题目
+    // Delete problem
     await prisma.problem.delete({
       where: { id: problemId },
     });
 
-    res.json({ message: '题目已删除', title: problem.title });
+    res.json({ message: 'Problem deleted', title: problem.title });
   } catch (error: any) {
     console.error('Delete problem error:', error);
-    res.status(500).json({ error: '删除题目失败' });
+    res.status(500).json({ error: 'Failed to delete problem' });
   }
 });
 
