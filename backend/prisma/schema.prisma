@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String               @id @default(uuid()) @db.Uuid
+  username              String               @unique @db.VarChar(50)
+  email                 String               @unique @db.VarChar(255)
+  passwordHash          String               @map("password_hash") @db.VarChar(255)
+  currentLevel          Int                  @default(1) @map("current_level")
+  learningGoal          LearningGoal?        @map("learning_goal")
+  warmupCompleted       Boolean              @default(false) @map("warmup_completed")
+  warmupData            Json                 @default("{}") @map("warmup_data")
+  algorithmProficiency  Json                 @default("{}") @map("algorithm_proficiency")
+  preferredLanguages    String[]             @default([]) @map("preferred_languages")
+  totalProblemsSolved   Int                  @default(0) @map("total_problems_solved")
+  totalSubmissions      Int                  @default(0) @map("total_submissions")
+  averageScore          Decimal              @default(0) @map("average_score") @db.Decimal(5, 2)
+  learningVelocity      Decimal              @default(1.0) @map("learning_velocity") @db.Decimal(3, 2)
+  recentScores          Int[]                @default([]) @map("recent_scores")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+  lastLogin             DateTime?            @map("last_login")
+  role                  UserRole             @default(USER)
+  deleted               Boolean              @default(false)
+  deletedAt             DateTime?            @map("deleted_at")
+  passwordResetRequired Boolean              @default(false) @map("password_reset_required")
+  hints                 Hint[]
+  llmConfig             LLMConfig?
+  createdProblems       Problem[]            @relation("ProblemCreator")
+  submissions           Submission[]
+  warmupConversations   WarmupConversation[]
+
+  @@map("users")
+}
+
+model Problem {
+  id                 String       @id @default(uuid()) @db.Uuid
+  title              String       @db.VarChar(255)
+  description        String
+  difficulty         Int
+  algorithmTypes     String[]     @map("algorithm_types")
+  timeLimit          Int          @default(2000) @map("time_limit")
+  memoryLimit        Int          @default(256) @map("memory_limit")
+  expectedComplexity String?      @map("expected_complexity") @db.VarChar(50)
+  examples           Json
+  testCases          Json         @map("test_cases")
+  standardSolutions  Json         @map("standard_solutions")
+  basicHints         Json?        @map("basic_hints")
+  generatedBy        String?      @map("generated_by") @db.VarChar(50)
+  generationPrompt   String?      @map("generation_prompt")
+  totalAttempts      Int          @default(0) @map("total_attempts")
+  totalSolved        Int          @default(0) @map("total_solved")
+  averageScore       Decimal      @default(0) @map("average_score") @db.Decimal(5, 2)
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  creatorId          String?      @map("creator_id") @db.Uuid
+  isPublic           Boolean      @default(false) @map("is_public")
+  hints              Hint[]
+  creator            User?        @relation("ProblemCreator", fields: [creatorId], references: [id])
+  submissions        Submission[]
+
+  @@map("problems")
+}
+
+model Submission {
+  id                 String           @id @default(uuid()) @db.Uuid
+  userId             String           @map("user_id") @db.Uuid
+  problemId          String           @map("problem_id") @db.Uuid
+  code               String
+  language           String           @db.VarChar(20)
+  status             SubmissionStatus
+  testResults        Json?            @map("test_results")
+  passedCases        Int              @default(0) @map("passed_cases")
+  totalCases         Int              @default(0) @map("total_cases")
+  executionTime      Int?             @map("execution_time")
+  memoryUsed         Decimal?         @map("memory_used") @db.Decimal(10, 2)
+  score              Decimal?         @db.Decimal(5, 2)
+  correctnessScore   Decimal?         @map("correctness_score") @db.Decimal(5, 2)
+  timeScore          Decimal?         @map("time_score") @db.Decimal(5, 2)
+  hintPenalty        Decimal?         @map("hint_penalty") @db.Decimal(5, 2)
+  qualityScore       Decimal?         @map("quality_score") @db.Decimal(5, 2)
+  hintsUsed          Int[]            @default([]) @map("hints_used")
+  complexityAnalysis Json?            @map("complexity_analysis")
+  submittedAt        DateTime         @default(now()) @map("submitted_at")
+  hints              Hint[]
+  problem            Problem          @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("submissions")
+}
+
+model Hint {
+  id               String      @id @default(uuid()) @db.Uuid
+  userId           String      @map("user_id") @db.Uuid
+  problemId        String      @map("problem_id") @db.Uuid
+  submissionId     String?     @map("submission_id") @db.Uuid
+  hintLevel        Int         @map("hint_level")
+  hintContent      String      @map("hint_content")
+  userCodeSnapshot String?     @map("user_code_snapshot")
+  generatedBy      String?     @map("generated_by") @db.VarChar(50)
+  generationTime   Int?        @map("generation_time")
+  language         String?     @db.VarChar(20)
+  createdAt        DateTime    @default(now()) @map("created_at")
+  problem          Problem     @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  submission       Submission? @relation(fields: [submissionId], references: [id])
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("hints")
+}
+
+model LLMConfig {
+  id                String      @id @default(uuid()) @db.Uuid
+  userId            String      @unique @map("user_id") @db.Uuid
+  provider          LLMProvider @default(openai)
+  apiKeyEncrypted   String?     @map("api_key_encrypted")
+  model             String?     @db.VarChar(50)
+  baseUrl           String?     @map("base_url")
+  customHeaders     Json?       @map("custom_headers")
+  totalRequests     Int         @default(0) @map("total_requests")
+  totalTokens       Int         @default(0) @map("total_tokens")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  codeAnalysisModel String?     @map("code_analysis_model") @db.VarChar(50)
+  hintGenModel      String?     @map("hint_gen_model") @db.VarChar(50)
+  lastResetDate     DateTime?   @map("last_reset_date")
+  monthlyRequests   Int         @default(0) @map("monthly_requests")
+  monthlyTokenQuota Int?        @map("monthly_token_quota")
+  monthlyTokens     Int         @default(0) @map("monthly_tokens")
+  problemGenModel   String?     @map("problem_gen_model") @db.VarChar(50)
+  quotaExceeded     Boolean     @default(false) @map("quota_exceeded")
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("llm_configs")
+}
+
+model WarmupConversation {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  messages    Json
+  assessment  Json?
+  completed   Boolean   @default(false)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("warmup_conversations")
+}
+
+enum LearningGoal {
+  interview
+  interest
+  competition
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum SubmissionStatus {
+  accepted
+  wrong_answer
+  time_limit_exceeded
+  runtime_error
+  compilation_error
+}
+
+enum LLMProvider {
+  openai
+  anthropic
+  custom
+}
